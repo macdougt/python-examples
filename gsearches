@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+
+import arrow, humanize, psycopg2, pytz, sys
+from config import config
+
+def make_link(text, target):
+  return f"\u001b]8;;{target}\u001b\\{text}\u001b]8;;\u001b\\"
+
+def print_link(text, target):
+  print(make_link(text, target))
+
+def select(select_query, f=lambda x: print(x)):
+  """ Execute SELECT query """
+  conn = None
+  try:
+    params = config()
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor()
+    cur.execute(select_query)
+    rows = cur.fetchall()
+    #print("The number of parts: ", cur.rowcount)
+    for row in rows:
+      f(row)
+    cur.close()
+  except (Exception, psycopg2.DatabaseError) as error:
+    print(error)
+  finally:
+    if conn is not None:
+      conn.close()
+
+if __name__ == "__main__":
+
+  # Default number of results
+  results = 20
+
+  if len(sys.argv) > 1:
+    results = sys.argv[1]
+
+  select(f"SELECT REGEXP_REPLACE((regexp_matches(url,'q=([^&]+)'))[1],'%20|\+',' ','g') AS query, MAX(substring(url,0,position('&' in url))), MAX(tblvisit.time_added) AS latest FROM tblvisit, tblurl WHERE tblvisit.urlid = tblurl.id AND url LIKE 'https://www.google.com/search?q=%' GROUP BY query  ORDER BY latest DESC LIMIT {results}",
+    lambda r: print(f"{arrow.get(str(r[2])).humanize()}\t\t{make_link(r[0], r[1])}")
+  )
