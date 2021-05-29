@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # Gather all the files matching a pattern
+from typing import List, Tuple
 import jsonlines, os, pprint, re, sys
 from collections import defaultdict
 from rich.console import Console
@@ -36,11 +37,8 @@ def find(pattern_string, file):
   pattern = re.compile(pattern_string)
   return find_pattern(pattern, file)
 
-# --- START --- #
-
-if __name__ == "__main__":
-
-  if len(sys.argv) < 2:
+def collect_inputs(arguments: List) -> Tuple[str, str]:
+  if len(arguments) < 2:
     # No arguments, prompt the user
     from bullet import colors, Input, VerticalPrompt
     questions = [
@@ -59,34 +57,32 @@ if __name__ == "__main__":
     inner_pattern_string = resulting_data['inner_pattern']
 
   else:
-    if len(sys.argv) == 2:
+    if len(arguments) == 2:
       file_pattern_string = ".*py$"
-      inner_pattern_string = re.compile(sys.argv[1])
+      inner_pattern_string = arguments[1]
     else:
-      file_pattern_string = sys.argv[1]
-      inner_pattern_string = sys.argv[2]
+      file_pattern_string = arguments[1]
+      inner_pattern_string = arguments[2]
 
-  file_pattern = re.compile(file_pattern_string)
-  inner_pattern = re.compile(inner_pattern_string)
+  return (file_pattern_string, inner_pattern_string)
 
-
+def get_files(file_pattern):
+  'Create a dictionary mapping file to count of files matching file_pattern'
   vscode_history_file = os.path.join(os.environ.get('HOME'), '.vscode_history')
-  unique_files = defaultdict(lambda: 0)
-
-  result_count = 0
-
+  distinct_files = defaultdict(lambda: 0)
   with jsonlines.open(vscode_history_file) as reader:
     for obj in reader:
-      #print(obj)
       # filter the filenames
       cur_filename = obj['filename']
       if re.search(file_pattern, cur_filename) and os.path.isfile(cur_filename):
-        unique_files[cur_filename] = unique_files[cur_filename]+1
-  #pprint.pprint(unique_files)
+        distinct_files[cur_filename] = distinct_files[cur_filename]+1
+  return distinct_files
 
+def present_results(unique_files):
+  'Present results using rich library'
+  result_count = 0
   table_rows = []
-
-  # Search for a pattern inside the files
+  #Search for a pattern inside the files
   for file in unique_files:
     cur_rows = find(inner_pattern, file)
     if cur_rows:
@@ -111,4 +107,29 @@ if __name__ == "__main__":
     console.print(table)
 
   print(f"{sys.argv[0]} {file_pattern_string} {inner_pattern_string}")
-  print(f"{result_count} files") 
+  print(f"{result_count} files")
+
+# --- START --- #
+
+if __name__ == "__main__":
+
+  file_pattern_string, inner_pattern_string = collect_inputs(sys.argv)
+
+  # Compile patterns
+  file_pattern = re.compile(file_pattern_string)
+  inner_pattern = re.compile(inner_pattern_string)
+
+  # Fetch the files matching file pattern
+  distinct_files = get_files(file_pattern)
+
+  # Present results 
+  present_results(distinct_files) 
+
+
+# --- TESTS --- #
+
+def test_provided_inputs():
+  'Mimic call to command line "spy *.html$ test_string"' 
+  file_pattern_string, inner_pattern_string = collect_inputs(["spy", "*.html$", "test_string"])
+  assert file_pattern_string == "*.html$"
+  assert inner_pattern_string == "test_string"
